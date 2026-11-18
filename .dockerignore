@@ -1,0 +1,21 @@
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/coverage
+**/.smoke
+**/*.tsbuildinfo
+
+# secrets and local env
+.env
+.env.*
+**/.env
+**/.env.*
+
+# not needed in the image
+.git
+.github
+.claude
+docs
+deploy
+*.md

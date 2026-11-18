@@ -7,7 +7,10 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "contract:sync": "pnpm --filter @workspace/api-contract sync",
+    "contract:generate": "pnpm --filter @workspace/api-contract generate",
+    "contract:check": "pnpm contract:sync && pnpm contract:generate && git diff --exit-code packages/api-contract/openapi.yaml packages/api-client/src/generated/schema.d.ts"
   },
   "devDependencies": {
     "@workspace/eslint-config": "workspace:*",

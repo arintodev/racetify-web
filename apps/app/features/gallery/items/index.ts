@@ -1,0 +1,6 @@
+export { GallerySelectionBar } from "./components/gallery-selection-bar"
+export { GalleryTile } from "./components/gallery-tile"
+export { MoveToCollectionDialog } from "./components/move-to-collection-dialog"
+export { invalidateGalleryItemQueries } from "./lib/invalidate-gallery"
+export { MAX_MOVE_ITEMS } from "./lib/move-api"
+export type { BulkMoveResult, MoveDestination, MoveItemRef } from "./lib/types"

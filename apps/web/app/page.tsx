@@ -1,19 +1,65 @@
-import { Button } from "@workspace/ui/components/button"
+import type { Metadata } from "next"
 
-export default function Page() {
+import { Faq } from "@/components/marketing/faq"
+import { FeatureGrid } from "@/components/marketing/feature-grid"
+import { FinalCta } from "@/components/marketing/final-cta"
+import { Hero } from "@/components/marketing/hero"
+import { HowItWorks } from "@/components/marketing/how-it-works"
+import { MarketingShell } from "@/components/marketing/marketing-shell"
+import { PricingSection } from "@/components/marketing/pricing-section"
+
+const description =
+  "Registration, participant management, orders, race-day media, and results in one workspace for race organizers."
+
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Racetify",
+  url: "https://racetify.com",
+  logo: "https://racetify.com/icon.svg",
+  description,
+  email: "hello@racetify.com",
+  contactPoint: {
+    "@type": "ContactPoint",
+    email: "hello@racetify.com",
+    contactType: "customer support",
+  },
+}
+
+export const metadata: Metadata = {
+  title: {
+    absolute: "Racetify — Race operations software for organizers",
+  },
+  description,
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "Racetify — Race operations software for organizers",
+    description,
+    type: "website",
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Racetify — Race operations software for organizers",
+    description,
+  },
+}
+
+export default function HomePage() {
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-        <div className="text-muted-foreground font-mono text-xs">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
-      </div>
-    </div>
+    <MarketingShell>
+      <Hero />
+      <FeatureGrid />
+      <HowItWorks />
+      <PricingSection />
+      <Faq />
+      <FinalCta />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(organizationJsonLd),
+        }}
+      />
+    </MarketingShell>
   )
 }

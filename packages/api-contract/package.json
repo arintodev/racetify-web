@@ -1,0 +1,16 @@
+{
+  "name": "@workspace/api-contract",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "openapi.yaml"
+  ],
+  "scripts": {
+    "sync": "node scripts/sync.mjs",
+    "generate": "openapi-typescript openapi.yaml -o ../api-client/src/generated/schema.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.10.1"
+  }
+}

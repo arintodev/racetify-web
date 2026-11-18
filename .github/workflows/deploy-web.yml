@@ -1,0 +1,222 @@
+# Builds the public site and organizer app, pushes them to GHCR, and deploys them to
+# VPS A into the existing racetify-api_edge network. The API's Nginx must already
+# have the racetify.com / app.racetify.com server blocks (deployed from racetify-api).
+#
+# Required repository/environment secrets:
+#   VPS_A_HOST, VPS_A_USER, VPS_A_SSH_KEY, VPS_A_FINGERPRINT, VPS_A_SSH_PORT (2026)
+#   GHCR_READ_TOKEN (optional; classic PAT with read:packages), GHCR_USER (optional)
+#
+# Required repository variables:
+#   WEB_PUBLIC_URL  https://racetify.com
+#   APP_PUBLIC_URL  https://app.racetify.com
+#   IMAGE_PREFIX    optional; defaults to ghcr.io/<lowercase repo owner>
+#   DEPLOY_PATH     optional; defaults to /opt/racetify/racetify-web
+name: deploy-web
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "package.json"
+      - ".npmrc"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "deploy/**"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing image tag to deploy (leave empty to build and deploy this commit)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: deploy-web-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      image_prefix: ${{ steps.resolve.outputs.image_prefix }}
+      should_build: ${{ steps.resolve.outputs.should_build }}
+    steps:
+      - name: Resolve image tag and registry prefix
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          IMAGE_PREFIX_VAR: ${{ vars.IMAGE_PREFIX }}
+        run: |
+          prefix="$(printf '%s' "${IMAGE_PREFIX_VAR:-ghcr.io/${GITHUB_REPOSITORY_OWNER}}" | tr '[:upper:]' '[:lower:]')"
+          prefix="${prefix%/}"
+          echo "image_prefix=${prefix}" >> "$GITHUB_OUTPUT"
+
+          if [ -n "${INPUT_TAG}" ]; then
+            if ! printf '%s' "${INPUT_TAG}" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'; then
+              echo "::error::Invalid image tag: ${INPUT_TAG}"
+              exit 1
+            fi
+            echo "tag=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: web
+            image: racetify-web
+            site_url: https://racetify.com
+          - target: app
+            image: racetify-app
+            site_url: https://app.racetify.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: ${{ matrix.target }}
+          push: true
+          build-args: |
+            RACETIFY_API_ORIGIN=http://api:8080
+            NEXT_PUBLIC_SITE_URL=${{ matrix.site_url }}
+          tags: ${{ needs.prepare.outputs.image_prefix }}/${{ matrix.image }}:${{ needs.prepare.outputs.tag }}
+          cache-from: type=gha,scope=web-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=web-${{ matrix.target }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  deploy:
+    needs: [prepare, build]
+    if: always() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      IMAGE_PREFIX: ${{ needs.prepare.outputs.image_prefix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the images exist
+        run: |
+          for image in racetify-web racetify-app; do
+            echo "Checking ${IMAGE_PREFIX}/${image}:${TAG}"
+            docker manifest inspect "${IMAGE_PREFIX}/${image}:${TAG}" >/dev/null
+          done
+
+      - name: Prepare VPS A (directory and GHCR login)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USER || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.VPS_A_HOST }}
+          port: ${{ secrets.VPS_A_SSH_PORT || 2026 }}
+          username: ${{ secrets.VPS_A_USER }}
+          key: ${{ secrets.VPS_A_SSH_KEY }}
+          fingerprint: ${{ secrets.VPS_A_FINGERPRINT }}
+          envs: GHCR_USER,GHCR_TOKEN
+          script: |
+            set -e
+            mkdir -p "${{ vars.DEPLOY_PATH || '/opt/racetify/racetify-web' }}/deploy"
+            printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+
+      - name: Upload deploy files to VPS A
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_A_HOST }}
+          port: ${{ secrets.VPS_A_SSH_PORT || 2026 }}
+          username: ${{ secrets.VPS_A_USER }}
+          key: ${{ secrets.VPS_A_SSH_KEY }}
+          fingerprint: ${{ secrets.VPS_A_FINGERPRINT }}
+          source: "deploy"
+          target: "${{ vars.DEPLOY_PATH || '/opt/racetify/racetify-web' }}"
+          overwrite: true
+          timeout: 60s
+
+      - name: Deploy web and app on VPS A
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/racetify/racetify-web' }}
+        with:
+          host: ${{ secrets.VPS_A_HOST }}
+          port: ${{ secrets.VPS_A_SSH_PORT || 2026 }}
+          username: ${{ secrets.VPS_A_USER }}
+          key: ${{ secrets.VPS_A_SSH_KEY }}
+          fingerprint: ${{ secrets.VPS_A_FINGERPRINT }}
+          envs: DEPLOY_PATH,TAG,IMAGE_PREFIX
+          command_timeout: 15m
+          script: |
+            set -e
+            cd "${DEPLOY_PATH}/deploy"
+            bash scripts/deploy-web.sh "${TAG}" "${IMAGE_PREFIX}"
+
+      - name: Verify the public sites
+        env:
+          WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
+          APP_PUBLIC_URL: ${{ vars.APP_PUBLIC_URL }}
+        run: |
+          set -e
+          for var in WEB_PUBLIC_URL APP_PUBLIC_URL; do
+            [ -n "${!var}" ] || { echo "::error::Set the ${var} repository variable"; exit 1; }
+          done
+          WEB="${WEB_PUBLIC_URL%/}"
+          APP="${APP_PUBLIC_URL%/}"
+          for url in "$WEB/" "$APP/login" "$WEB/api/health" "$APP/api/health"; do
+            echo "Checking ${url}"
+            curl -fsS --max-time 10 --retry 10 --retry-delay 5 --retry-all-errors "$url"
+          done
+          # Proves Cloudflare -> Nginx -> Next rewrite -> API end to end.
+          curl -fsS --max-time 10 --retry 10 --retry-delay 5 --retry-all-errors \
+            "$WEB/api/v1/public/events?limit=1" >/dev/null
+
+      - name: Failure guidance
+        if: failure()
+        run: |
+          echo "::error::Web deployment failed. The deploy script rolls back to the previous tag when the rollout fails."
+          echo "To roll back manually, dispatch this workflow with the previous sha-<12> tag."

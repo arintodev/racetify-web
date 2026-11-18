@@ -7,3 +7,5 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   msw: false
+  # Fabric.js optional Node dependency; the template editor is browser-only.
+  canvas: false
