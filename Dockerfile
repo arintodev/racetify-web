@@ -5,7 +5,7 @@
 
 FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm \
-    PATH=/pnpm:$PATH \
+    PATH=/pnpm/bin:/pnpm:$PATH \
     NEXT_TELEMETRY_DISABLED=1 \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN apt-get update \
