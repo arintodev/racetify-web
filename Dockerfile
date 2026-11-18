@@ -11,7 +11,7 @@ ENV PNPM_HOME=/pnpm \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /pnpm/store \
+RUN mkdir -p /pnpm/store /pnpm/bin \
     && corepack enable \
     && corepack prepare pnpm@11.25.0 --activate \
     && pnpm config set store-dir /pnpm/store --global
