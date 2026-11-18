@@ -209,7 +209,7 @@ export interface paths {
         get: operations["get_organization"];
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["delete_organization"];
         options?: never;
         head?: never;
         patch?: never;
@@ -225,6 +225,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["activate_organization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/orgs/{orgId}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["assign_organization_owner"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2912,6 +2928,9 @@ export interface components {
             bibName?: string | null;
             bibNumber?: string | null;
         };
+        AssignOrganizationOwnerRequest: {
+            ownerEmail: string;
+        };
         AuditActorDto: {
             /** Format: uuid */
             id: string;
@@ -5552,6 +5571,34 @@ export interface operations {
             };
         };
     };
+    delete_organization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     activate_organization: {
         parameters: {
             query?: never;
@@ -5566,6 +5613,54 @@ export interface operations {
         responses: {
             /** @description Activated organization */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    assign_organization_owner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignOrganizationOwnerRequest"];
+            };
+        };
+        responses: {
+            /** @description Owner assigned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrganizationRowDto"];
+                };
+            };
+            /** @description Organization or account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Owner account is not active */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

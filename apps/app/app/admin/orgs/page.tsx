@@ -2,7 +2,7 @@
 
 import { queryKeys, type Schemas } from "@workspace/api-client"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Building2, Eye, MoreHorizontal, Plus, Search } from "lucide-react"
+import { Building2, Eye, MoreHorizontal, Plus, Search, Trash2, UserCog } from "lucide-react"
 import Link from "next/link"
 import * as React from "react"
 import { toast } from "sonner"
@@ -46,6 +46,7 @@ import {
   TableRow,
 } from "@workspace/ui/components/table"
 
+import { ChangeOwnerDialog } from "@/components/admin/change-owner-dialog"
 import { CreateOrganizationDialog } from "@/components/admin/create-organization-dialog"
 import { EmptyState } from "@/components/empty-state"
 import { PageHeader } from "@/components/page-header"
@@ -77,6 +78,12 @@ export default function AdminOrganizationsPage() {
     type: "suspend" | "activate"
     row: OrganizationRow
   } | null>(null)
+  const [ownerTarget, setOwnerTarget] = React.useState<OrganizationRow | null>(
+    null
+  )
+  const [deleteTarget, setDeleteTarget] =
+    React.useState<OrganizationRow | null>(null)
+  const [deleting, setDeleting] = React.useState(false)
 
   const organizations = useQuery({
     queryKey: queryKeys.adminOrgs({
@@ -127,6 +134,32 @@ export default function AdminOrganizationsPage() {
     } finally {
       setAction(null)
     }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await getBrowserApi().request(`/v1/admin/orgs/${deleteTarget.id}`, {
+        method: "DELETE",
+      })
+      toast.success("Organization deleted")
+      void queryClient.invalidateQueries({ queryKey: ["admin", "orgs"] })
+      void queryClient.invalidateQueries({ queryKey: ["workspaces"] })
+    } catch {
+      toast.error("Could not delete the organization")
+    } finally {
+      setDeleting(false)
+      setDeleteTarget(null)
+    }
+  }
+
+  function handleOwnerAssigned() {
+    toast.success("Owner assigned", {
+      description: "The account can now manage this organization.",
+    })
+    void queryClient.invalidateQueries({ queryKey: ["admin", "orgs"] })
+    void queryClient.invalidateQueries({ queryKey: ["workspaces"] })
   }
 
   return (
@@ -282,22 +315,37 @@ export default function AdminOrganizationsPage() {
                               View overview
                             </DropdownMenuItem>
                             {canManage ? (
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={() =>
-                                  setAction({
-                                    type:
-                                      row.status === "active"
-                                        ? "suspend"
-                                        : "activate",
-                                    row,
-                                  })
-                                }
-                              >
-                                {row.status === "active"
-                                  ? "Suspend tenant"
-                                  : "Activate tenant"}
-                              </DropdownMenuItem>
+                              <>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() =>
+                                    setAction({
+                                      type:
+                                        row.status === "active"
+                                          ? "suspend"
+                                          : "activate",
+                                      row,
+                                    })
+                                  }
+                                >
+                                  {row.status === "active"
+                                    ? "Suspend tenant"
+                                    : "Activate tenant"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setOwnerTarget(row)}
+                                >
+                                  <UserCog />
+                                  Change owner
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setDeleteTarget(row)}
+                                >
+                                  <Trash2 />
+                                  Delete organization
+                                </DropdownMenuItem>
+                              </>
                             ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -352,6 +400,45 @@ export default function AdminOrganizationsPage() {
                 onClick={() => void confirmStatusChange()}
               >
                 Confirm
+              </AlertDialogCancel>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <ChangeOwnerDialog
+          organization={
+            ownerTarget ? { id: ownerTarget.id, name: ownerTarget.name } : null
+          }
+          open={Boolean(ownerTarget)}
+          onOpenChange={(open) => {
+            if (!open) setOwnerTarget(null)
+          }}
+          onAssigned={handleOwnerAssigned}
+        />
+
+        <AlertDialog
+          open={Boolean(deleteTarget)}
+          onOpenChange={(open) => {
+            if (!open) setDeleteTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete organization?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteTarget?.name ?? "This organization"} will be removed from
+                the platform. Its data is retained and the slug can be reused,
+                but members and public pages lose access immediately.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel
+                variant="destructive"
+                disabled={deleting}
+                onClick={() => void confirmDelete()}
+              >
+                {deleting ? "Deleting…" : "Delete"}
               </AlertDialogCancel>
             </AlertDialogFooter>
           </AlertDialogContent>

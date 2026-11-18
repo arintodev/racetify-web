@@ -236,6 +236,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminOrganizationRowDto'
+    delete:
+      tags:
+      - admin
+      operationId: delete_organization
+      parameters:
+      - name: orgId
+        in: path
+        description: Organization ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: Organization deleted
+        '404':
+          description: Organization not found
   /v1/admin/orgs/{orgId}/activate:
     post:
       tags:
@@ -252,6 +269,38 @@ paths:
       responses:
         '200':
           description: Activated organization
+  /v1/admin/orgs/{orgId}/owner:
+    post:
+      tags:
+      - admin
+      operationId: assign_organization_owner
+      parameters:
+      - name: orgId
+        in: path
+        description: Organization ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignOrganizationOwnerRequest'
+        required: true
+      responses:
+        '200':
+          description: Owner assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrganizationRowDto'
+        '404':
+          description: Organization or account not found
+        '409':
+          description: Owner account is not active
+        '422':
+          description: Validation failed
   /v1/admin/orgs/{orgId}/suspend:
     post:
       tags:
@@ -5356,6 +5405,13 @@ components:
           type:
           - string
           - 'null'
+    AssignOrganizationOwnerRequest:
+      type: object
+      required:
+      - ownerEmail
+      properties:
+        ownerEmail:
+          type: string
     AuditActorDto:
       type: object
       required:
